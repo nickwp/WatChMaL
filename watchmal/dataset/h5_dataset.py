@@ -60,21 +60,18 @@ class H5CommonDataset(Dataset, ABC):
         self.hdf5_hit_pmt  = self.h5_file["hit_pmt"]
         self.hdf5_hit_time = self.h5_file["hit_time"]
 
-        self.hit_pmt = np.memmap(self.h5_path, mode="r", shape=self.hdf5_hit_pmt.shape,
-                                 offset=self.hdf5_hit_pmt.id.get_offset(),
-                                 dtype=self.hdf5_hit_pmt.dtype)
-
-        self.time = np.memmap(self.h5_path, mode="r", shape=self.hdf5_hit_time.shape,
-                              offset=self.hdf5_hit_time.id.get_offset(),
-                              dtype=self.hdf5_hit_time.dtype)
-        self.load_hits()
+        self.create_memmaps()
 
         # Set attribute so that method won't be invoked again
         self.initialized = True
-        
-    @abstractmethod
-    def load_hits(self):
-        pass
+
+    def create_memmaps(self):
+        self.hit_pmt = np.memmap(self.h5_path, mode="r", shape=self.hdf5_hit_pmt.shape,
+                                 offset=self.hdf5_hit_pmt.id.get_offset(),
+                                 dtype=self.hdf5_hit_pmt.dtype)
+        self.time = np.memmap(self.h5_path, mode="r", shape=self.hdf5_hit_time.shape,
+                              offset=self.hdf5_hit_time.id.get_offset(),
+                              dtype=self.hdf5_hit_time.dtype)
 
     def __len__(self):
         return self.dataset_length
@@ -103,7 +100,8 @@ class H5Dataset(H5CommonDataset, ABC):
     def __init__(self, h5_path, is_distributed):
         H5CommonDataset.__init__(self, h5_path, is_distributed)
         
-    def load_hits(self):
+    def create_memmaps(self):
+        super().create_memmaps()
         self.hdf5_hit_charge = self.h5_file["hit_charge"]
         self.hit_charge = np.memmap(self.h5_path, mode="r", shape=self.hdf5_hit_charge.shape,
                                     offset=self.hdf5_hit_charge.id.get_offset(),
@@ -130,7 +128,8 @@ class H5TrueDataset(H5CommonDataset, ABC):
         H5CommonDataset.__init__(self, h5_path, transforms)
         self.digitize_hits = digitize_hits
 
-    def load_hits(self):
+    def create_memmaps(self):
+        super().create_memmaps()
         self.all_hit_parent = self.h5_file["hit_parent"]
         self.hit_parent = np.memmap( self.h5_path, mode="r", shape=self.all_hit_parent.shape,
                               offset=self.all_hit_parent.id.get_offset(),
