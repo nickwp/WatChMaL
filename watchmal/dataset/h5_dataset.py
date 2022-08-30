@@ -72,6 +72,7 @@ class H5CommonDataset(Dataset, ABC):
         self.time = np.memmap(self.h5_path, mode="r", shape=self.hdf5_hit_time.shape,
                               offset=self.hdf5_hit_time.id.get_offset(),
                               dtype=self.hdf5_hit_time.dtype)
+        self.access_count = 0
 
     def __len__(self):
         return self.dataset_length
@@ -79,6 +80,11 @@ class H5CommonDataset(Dataset, ABC):
     def __getitem__(self, item):
         if not self.initialized:
             self.initialize()
+
+        if self.access_count > 10000:
+            self.create_memmaps()
+
+        self.access_count += 1
 
         data_dict = {
             "labels": self.labels[item].astype(np.int64),
