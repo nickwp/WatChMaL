@@ -11,7 +11,7 @@ import analysis.utils.plotting as plot
 from analysis.read import WatChMaLOutput
 
 
-def combine_softmax(softmaxes, labels, label_map=None):
+def combine_softmax(softmaxes, labels, selection=None, label_map=None):
     """
     Sum the softmax values for the given labels.
 
@@ -23,6 +23,8 @@ def combine_softmax(softmaxes, labels, label_map=None):
     labels: int or sequence of ints
         Set of labels (corresponding to classes) to combine. Can be just a single label, in which case the corresponding
         column of `softmaxes` is returned.
+    selection: indexing expression, optional
+        Selection of the events to return combined softmaxes (by default use all).
     label_map: dictionary
         Mapping from labels to columns of the softmax array. By default, assume labels map directly to column indices.
 
@@ -34,7 +36,9 @@ def combine_softmax(softmaxes, labels, label_map=None):
     labels = np.atleast_1d(labels)
     if label_map is not None:
         labels = [label_map[l] for l in labels]
-    return np.sum(softmaxes[:, labels], axis=1)
+    if selection is None:
+        selection = ...
+    return np.sum(softmaxes[selection, labels], axis=1)
 
 
 def plot_rocs(runs, signal_labels, background_labels, selection=None, ax=None, fig_size=None, x_label="", y_label="",
@@ -91,8 +95,8 @@ def plot_rocs(runs, signal_labels, background_labels, selection=None, ax=None, f
         fig = ax.get_figure()
     for r in runs:
         run_selection = r.selection if selection is None else selection
-        selected_signal = np.isin(r.true_labels, signal_labels)[run_selection]
-        selected_discriminator = r.discriminator(signal_labels, background_labels)[run_selection]
+        selected_signal = np.isin(r.true_labels[run_selection], signal_labels)
+        selected_discriminator = r.discriminator(signal_labels, background_labels, run_selection)
         fpr, tpr, _ = metrics.roc_curve(selected_signal, selected_discriminator)
         auc = metrics.auc(fpr, tpr)
         args = {**plot_args, **r.plot_args}
@@ -207,8 +211,8 @@ class ClassificationRun(ABC):
         self.cut = None
 
     @abstractmethod
-    def discriminator(self, signal_labels, background_labels):
-        """This method should return the discriminator for the given signal and background labels"""
+    def discriminator(self, signal_labels, background_labels, selection=None):
+        """This method should return the discriminator for the given signal and background labels for selected events"""
 
     def select_labels(self, select_labels, selection=None):
         """
@@ -474,7 +478,7 @@ class WatChMaLClassification(ClassificationRun, WatChMaLOutput):
             ax1.legend(*plot.combine_legends((ax1, ax2)), loc=legend)
         return fig, ax1, ax2
 
-    def discriminator(self, signal_labels, background_labels):
+    def discriminator(self, signal_labels, background_labels, selection=None):
         """
         Return a discriminator with appropriate scaling of softmax values from multi-class training, given the set of
         signal and background class labels. For each event, the discriminator is the sum the signal softmax values
@@ -486,14 +490,19 @@ class WatChMaLClassification(ClassificationRun, WatChMaLOutput):
             Set of labels corresponding to signal classes. Can be either a single label or a sequence of labels.
         background_labels: int or sequence of ints
             Set of labels corresponding to background classes. Can be either a single label or a sequence of labels.
+        selection: indexing expression, optional
+            Selection of the events to return discriminator (by default use the run's predefined selection).
+
 
         Returns
         -------
         np.ndarray
             One-dimensional array of discriminator values, with length equal to the number of events in this run.
         """
-        signal_softmax = combine_softmax(self.softmaxes, signal_labels, self.label_map)
-        background_softmax = combine_softmax(self.softmaxes, background_labels, self.label_map)
+        if selection is None:
+            selection = self.selection
+        signal_softmax = combine_softmax(self.softmaxes, signal_labels, selection, self.label_map)
+        background_softmax = combine_softmax(self.softmaxes, background_labels, selection, self.label_map)
         return signal_softmax / (signal_softmax + background_softmax)
 
     @property
@@ -564,7 +573,7 @@ class FiTQunClassification(ClassificationRun):
         self._electron_pi0_discriminator = None
         self._nll_pi0mass_factor = None
 
-    def discriminator(self, signal_labels, background_labels):
+    def discriminator(self, signal_labels, background_labels, selection=None):
         """
         Returns discriminator values given sets of labels representing the signal and background.
         For electron and/or gamma vs muon, use `electron_muon_discriminator`.
@@ -579,26 +588,30 @@ class FiTQunClassification(ClassificationRun):
             Set of labels corresponding to signal classes. Can be either a single label or a sequence of labels.
         background_labels: int or sequence of ints
             Set of labels corresponding to background classes. Can be either a single label or a sequence of labels.
+        selection: indexing expression, optional
+            Selection of the events to return discriminator (by default use the run's predefined selection).
 
         Returns
         -------
         np.ndarray
             One-dimensional array of discriminator values, with length equal to the number of events in this run.
         """
+        if selection is None:
+            selection = self.selection
         signal_labels = np.atleast_1d(signal_labels)
         background_labels = np.atleast_1d(background_labels)
         if set(signal_labels) <= self.electron_like and set(background_labels) <= self.muons:
-            return self.electron_muon_discriminator
+            return self.electron_muon_discriminator[selection]
         elif set(signal_labels) <= self.muons and set(background_labels) <= self.electron_like:
-            return self.muon_electron_discriminator
+            return self.muon_electron_discriminator[selection]
         elif set(signal_labels) <= self.electrons and set(background_labels) <= self.gammas:
-            return self.electron_gamma_discriminator
+            return self.electron_gamma_discriminator[selection]
         elif set(signal_labels) <= self.gammas and set(background_labels) <= self.electrons:
-            return self.gamma_electron_discriminator
+            return self.gamma_electron_discriminator[selection]
         elif set(signal_labels) <= self.electron_like and set(background_labels) <= self.pi0s:
-            return self.electron_pi0_discriminator
+            return self.electron_pi0_discriminator[selection]
         elif set(signal_labels) <= self.pi0s and set(background_labels) <= self.electron_like:
-            return self.pi0_electron_discriminator
+            return self.pi0_electron_discriminator[selection]
         else:
             raise NotImplementedError(f"A discriminator for the labels given for the signal {signal_labels} and "
                                       f"background {background_labels} has not yet been implemented for fiTQun outputs")
