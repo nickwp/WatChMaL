@@ -78,6 +78,7 @@ class ReconstructionEngine(ABC):
 
     def configure_loss(self, loss_config):
         self.criterion = instantiate(loss_config)
+        self.raw_criterion = instantiate(loss_config, reduction="none")
 
     def configure_optimizers(self, optimizer_config):
         """Instantiate an optimizer from a hydra config."""
@@ -104,6 +105,9 @@ class ReconstructionEngine(ABC):
         """
         for name, loader_config in loaders_config.items():
             self.data_loaders[name] = get_data_loader(**data_config, **loader_config, is_distributed=is_distributed, seed=seed)
+
+    def raw_loss(self, data, target):
+        pass
 
     def get_synchronized_outputs(self, output_dict):
         """
@@ -208,6 +212,7 @@ class ReconstructionEngine(ABC):
 
             train_loader = self.data_loaders["train"]
             self.step = 0
+            self.bad_val = False
             # update seeding for distributed samplers
             if self.is_distributed:
                 train_loader.sampler.set_epoch(self.epoch)
@@ -217,6 +222,11 @@ class ReconstructionEngine(ABC):
                 # Train on batch
                 self.data = train_data['data'].to(self.device)
                 self.target = train_data[self.truth_key].to(self.device)
+                if self.bad_val:
+                    raw_losses = self.raw_loss(self.data, self.target)
+                    print(f"GPU{self.rank} new train loss mean {torch.mean(raw_losses).item()} std {torch.std(raw_losses).item()} median {torch.median(raw_losses).item()}")
+#                    print(f"GPU{self.rank}", raw_losses.detach().cpu().numpy())
+                    self.bad_val = False
                 # Call forward: make a prediction & measure the average error using data = self.data
                 outputs, metrics = self.forward(True)
                 metrics = {k: v.item() for k, v in metrics.items()}
@@ -232,6 +242,8 @@ class ReconstructionEngine(ABC):
                 log_entries = {"iteration": self.iteration, "epoch": self.epoch, **metrics}
                 # record the metrics for the mini-batch in the log
                 self.train_log.log(log_entries)
+#                metrics = self.get_synchronized_metrics(metrics)
+                self.av_loss = metrics['loss']
                 # run validation on given intervals
                 if self.iteration % val_interval == 0:
                     if self.rank == 0:
@@ -243,7 +255,12 @@ class ReconstructionEngine(ABC):
                               f" Epoch time {step_time-epoch_start_time}"
                               f" Total time {step_time-start_time}")
                         print(f"  Training   {', '.join(f'{k}: {v:.5g}' for k, v in metrics.items())}")
+                    self.bad_val = False
                     self.validate(val_iter, num_val_batches, checkpointing)
+                    if self.bad_val:
+                        raw_losses = self.raw_loss(train_data['data'].to(self.device), train_data[self.truth_key].to(self.device))
+                        print(f"GPU{self.rank} train loss mean {torch.mean(raw_losses).item()} std {torch.std(raw_losses).item()} median {torch.median(raw_losses).item()}")
+#                        print(f"GPU{self.rank}", raw_losses.detach().cpu().numpy())
             # save state at end of epoch
             if self.rank == 0 and (save_interval is not None) and ((self.epoch+1) % save_interval == 0):
                 self.save_state(suffix=f'_epoch_{self.epoch+1}')
@@ -284,6 +301,12 @@ class ReconstructionEngine(ABC):
             self.target = val_data[self.truth_key].to(self.device)
             # evaluate the network
             outputs, metrics = self.forward(False)
+            if metrics['loss'] > self.av_loss*3:
+                self.bad_val = True
+                print(f"GPU{self.rank} val loss {metrics['loss']} > 3 * train loss {self.av_loss}")
+                raw_losses = self.raw_loss(self.data, self.target)
+                print(f"GPU{self.rank} val loss mean {torch.mean(raw_losses).item()} std {torch.std(raw_losses).item()} median {torch.median(raw_losses).item()}")
+ #               print(f"GPU{self.rank}", raw_losses.detach().cpu().numpy())
             if val_metrics is None:
                 val_metrics = metrics
             else:

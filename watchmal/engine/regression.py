@@ -53,6 +53,14 @@ class RegressionEngine(ReconstructionEngine):
             metrics = {'loss': self.loss}
         return outputs, metrics
 
+    def raw_loss(self, data, target):
+        with torch.no_grad():
+            model_out = self.model(data).reshape(target.shape)
+            scaled_target = self.scale_values(target)
+            scaled_model_out = self.scale_values(model_out)
+            raw_loss = self.raw_criterion(scaled_model_out, scaled_target)
+            return raw_loss
+
     def scale_values(self, data):
         scaled = (data - self.output_center) / self.output_scale
         return scaled
