@@ -120,22 +120,26 @@ class CNNmPMTDataset(H5Dataset):
 
         # encode the 3D geometry into optional extra CNN input channels
         self.geom_data = {}
-        if geometry_file is None:
-            if not set(channels).isdisjoint({"mpmt_position", "mpmt_direction", "mpmt_exists"}):
+        if not set(channels).isdisjoint({"mpmt_position", "mpmt_direction", "mpmt_exists", "mpmt_onehot"}):
+            if geometry_file is None:
                 raise TypeError("A geometry file must be provided if using channels that encode the geometry.")
-        else:
-            geo_file = np.load(geometry_file)
-            pmt_positions = geo_file['position']
-            pmt_directions = geo_file['orientation']
-            pmt_ids = np.arange(0, pmt_positions.shape[0])
-            central_pmt_channel = 0 if self.use_new_mpmt_convention else 18
-            self.geom_data['mpmt_position'] = self.process_data(pmt_ids, pmt_positions)[central_pmt_channel]
-            self.geom_data['mpmt_direction'] = self.process_data(pmt_ids, pmt_directions)[central_pmt_channel]
-            self.geom_data['mpmt_exists'] = self.process_data(pmt_ids, 1)[central_pmt_channel]
-            for c, (offset, scale) in list(channel_scaling.items()):
-                if c in self.geom_data:
-                    self.geom_data[c] = (self.geom_data[c] - offset)/scale
-                    self.scaling.pop(c)
+            else:
+                geo_file = np.load(geometry_file)
+                pmt_positions = geo_file['position']
+                pmt_directions = geo_file['orientation']
+                n_pmts = pmt_positions.shape[0]
+                n_mpmts = n_pmts // PMTS_PER_MPMT
+                pmt_ids = np.arange(0, n_pmts)
+                mpmts = pmt_ids % PMTS_PER_MPMT
+                central_pmt_channel = 0 if self.use_new_mpmt_convention else 18
+                self.geom_data['mpmt_position'] = self.process_data(pmt_ids, pmt_positions)[central_pmt_channel]
+                self.geom_data['mpmt_direction'] = self.process_data(pmt_ids, pmt_directions)[central_pmt_channel]
+                self.geom_data['mpmt_exists'] = self.process_data(pmt_ids, 1)[central_pmt_channel]
+                self.geom_data['mpmt_onehot'] = self.process_data(pmt_ids, np.eye(n_mpmts)[mpmts])[central_pmt_channel]
+                for c, (offset, scale) in list(channel_scaling.items()):
+                    if c in self.geom_data:
+                        self.geom_data[c] = (self.geom_data[c] - offset)/scale
+                        self.scaling.pop(c)
 
         # set up data ranges and permutation maps for the chosen channels
         self.image_depth = 0
