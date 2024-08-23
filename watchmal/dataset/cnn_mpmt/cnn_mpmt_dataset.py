@@ -50,7 +50,7 @@ class CNNmPMTDataset(H5Dataset):
 
     def __init__(self, h5file, mpmt_positions_file, transforms=None, use_new_mpmt_convention=False, channels=None,
                  collapse_mpmt_channels=None, channel_scale_factor=None, channel_scale_offset=None, geometry_file=None,
-                 use_memmap=True):
+                 mpmts_mask=None, pmts_mask=None, use_memmap=True):
         """
         Constructs a dataset for CNN data. Event hit data is read in from the HDF5 file and the PMT charge data is
         formatted into an event-display-like image for input to a CNN. Each pixel of the image corresponds to one mPMT
@@ -84,6 +84,10 @@ class CNNmPMTDataset(H5Dataset):
             By default, no scaling is applied.
         geometry_file: string
             Path to file defining the 3D geometry (PMT positions and orientations), required if using geometry channels.
+        mpmts_mask: sequence of int
+            mPMT IDs to mask out from the data
+        pmts_mask: sequence of int
+            PMT IDs to mask out from the data
         use_memmap: bool
             Use a memmap and load data into memory as needed (default), otherwise load entire dataset at initialisation
 """
@@ -130,6 +134,14 @@ class CNNmPMTDataset(H5Dataset):
         self.endcap_right = self.endcap_left + self.endcap_size
         self.top_endcap = np.s_[..., :self.endcap_size, self.endcap_left:self.endcap_right]
         self.bottom_endcap = np.s_[..., -self.endcap_size:, self.endcap_left:self.endcap_right]
+
+        # Arrays to mask out PMTs and mPMTs
+        self.use_mpmts = np.full(self.mpmt_positions.shape[0], True)
+        if mpmts_mask is not None:
+            self.use_mpmts[mpmts_mask] = False
+        self.use_pmts = np.full(self.mpmt_positions.shape[0]*PMTS_PER_MPMT, True)
+        if pmts_mask is not None:
+            self.use_pmts[pmts_mask] = False
 
         # encode the 3D geometry into optional extra CNN input channels
         self.geom_data = {}
@@ -185,8 +197,10 @@ class CNNmPMTDataset(H5Dataset):
         pmt_data = pmt_data.reshape(pmt_data.shape[0], -1)
 
         mpmts = pmts // PMTS_PER_MPMT
-        channels = pmts % PMTS_PER_MPMT
-
+        mask = self.use_pmts[pmts] & self.use_mpmts[mpmts]
+        mpmts = mpmts[mask]
+        pmt_data = pmt_data[mask]
+        channels = pmts[mask] % PMTS_PER_MPMT
         rows = self.mpmt_positions[mpmts, 0]
         cols = self.mpmt_positions[mpmts, 1]
 
