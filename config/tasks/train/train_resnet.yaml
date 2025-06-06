@@ -1,3 +1,9 @@
+defaults:
+ - /optimizers: adam
+ - /loss: cross_entropy
+ - /data_loaders:
+   - train
+   - validation
 epochs: 20
 
 val_interval: 40
