@@ -1,0 +1,11 @@
+model:
+  num_output_channels: 2
+data:
+  split_path: /vols/hyperk/users/nprouse/WCTE/WCSim/wcsim_wcte_pgun_3M_e-_3M_mu-_3M_gamma_3M_pi+_2class_emu_ALL.npz
+engine:
+  label_set:
+  - 1
+  - 2
+defaults:
+- resnet_train_narval
+- _self_

@@ -1,0 +1,24 @@
+defaults:
+    - reg_test
+    - override model: resnet50
+    - _self_
+gpu_list:
+    -0
+data:
+  split_path: /vols/hyperk/users/nprouse/WCTE/WCSim/wcsim_wcte_pgun_3M_e-_3M_mu-_3M_gamma_3M_pi+_1class_e-_FC.npz
+  dataset:
+    use_new_mpmt_convention: True
+    h5file: vols/hyperk/users/nprouse/WCTE/WCSim/wcsim_wcte_pgun_3M_e-_3M_mu-_3M_gamma_3M_pi+_0to1GeV.h5
+    mpmt_positions_file: /vols/t2k/WCTE/ml_2024/WCTE_mPMT_image_positions.npz
+    geometry_file: /vols/t2k/WCTE/ml_2024/wcte_full_geo_v1.2.npz
+    channels:
+      - is_hit
+      - mpmt_position
+    channel_scaling:
+      time:
+      - 950
+      - 10
+      mpmt_position:
+      - 0
+      - 100
+

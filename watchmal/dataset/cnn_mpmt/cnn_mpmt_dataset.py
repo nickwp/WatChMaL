@@ -196,6 +196,12 @@ class CNNmPMTDataset(H5Dataset):
         # fix indexing of barrel PMTs in mPMT modules to match that of endcaps in the projection to 2D
         data[self.barrel] = data[self.barrel_mpmt_map][self.barrel]
 
+        if self.default_transformation:
+            for mpmt_id in [45,46,47,53,54,55,56,57,64,65,81,82,83,84,89,90,91,92,93,94]:
+                row = self.mpmt_positions[mpmt_id][0]
+                col = self.mpmt_positions[mpmt_id][1]
+                data[:, :, row, col] = data[:, :, row, col][self.rotate_permutation_pmts]
+
         return data
 
     def __getitem__(self, item):
