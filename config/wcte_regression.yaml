@@ -5,17 +5,43 @@ defaults:
 gpu_list:
     - 0
 data:
-  split_path: /vols/hyperk/users/nprouse/WCTE/WCSim/wcsim_wcte_pgun_3M_e-_3M_mu-_3M_gamma_3M_pi+_1class_e-_FC.npz
+  split_path: /rds/general/user/kj4718/home/ML/ml_geometry/2025_cds_geo/split_index_list_e_FC.npz
   dataset:
+    default_transformation: True
     use_new_mpmt_convention: True
-    h5file: /vols/hyperk/users/nprouse/WCTE/WCSim/wcsim_wcte_pgun_3M_e-_3M_mu-_3M_gamma_3M_pi+_0to1GeV.h5
-    mpmt_positions_file: /vols/t2k/WCTE/ml_2024/WCTE_mPMT_image_positions.npz
-    geometry_file: /vols/t2k/WCTE/ml_2024/wcte_full_geo_v1.2.npz
-    channels: ['is_hit', 'mpmt_position']
-    channel_scaling:
-      time:
-      - 0
-      - 10
-      mpmt_position:
-      - 0
-      - 100
+    h5file: /rds/general/user/bh625/home/h5files/wcte_CDS_pgun_e-_3M_mu-_3M_0to1GeV.h5
+    #mpmt_positions_file: /rds/general/user/bh625/home/mpmt_position_files/WCTE_mPMT_image_positions_with_missing_mpmts_v2.npz
+    mpmt_positions_file: /rds/general/user/kj4718/home/ML/ml_geometry/2025_cds_geo/WCTE_mPMT_image_positions_v3.npz
+    geometry_file: /rds/general/user/bh625/home/geometries/WCTE_geometry_v1.12.21.npz
+    channels: 
+      - charge
+      - time
+      - mpmt_position
+    channel_scale_offset:
+      time: 0
+      charge: 0
+      mpmt_position: 0
+    channel_scale_factor:
+      time: 10
+      mpmt_position: 100
+tasks:
+  train:
+    data_loaders:
+      train:
+        batch_size: 1024
+        pre_transforms: []
+      validation:
+        batch_size: 2048
+    num_val_batches: 16
+    val_interval: 20
+    optimizers:
+      lr: 0.02
+  evaluate:
+    data_loaders:
+      test:
+        batch_size: 2048
+engine:
+  target_key: 
+    - directions
+model:
+  num_output_channels: 3

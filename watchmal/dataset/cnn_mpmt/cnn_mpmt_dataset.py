@@ -48,7 +48,7 @@ class CNNmPMTDataset(H5Dataset):
     with mPMTs arrange in an event-display-like format.
     """
 
-    def __init__(self, h5file, mpmt_positions_file, transforms=None, use_new_mpmt_convention=False, channels=None,
+    def __init__(self, h5file, mpmt_positions_file, transforms=None, use_new_mpmt_convention=False, default_transformation=False, channels=None,
                  collapse_mpmt_channels=None, channel_scale_factor=None, channel_scale_offset=None, geometry_file=None,
                  use_memmap=True):
         """
@@ -91,6 +91,7 @@ class CNNmPMTDataset(H5Dataset):
         super().__init__(h5file, use_memmap)
 
         self.use_new_mpmt_convention = use_new_mpmt_convention
+        self.default_transformation = default_transformation = transforms is None or 'rotate_permutation_pmts' in transforms
         if self.use_new_mpmt_convention:
             self.barrel_mpmt_map = BARREL_MPMT_MAP_NEW
             self.vertical_flip_mpmt_map = VERTICAL_FLIP_MPMT_MAP_NEW
@@ -99,6 +100,8 @@ class CNNmPMTDataset(H5Dataset):
             self.barrel_mpmt_map = BARREL_MPMT_MAP
             self.vertical_flip_mpmt_map = VERTICAL_FLIP_MPMT_MAP
             self.horizontal_flip_mpmt_map = HORIZONTAL_FLIP_MPMT_MAP
+        if self.default_transformation:
+            self.rotate_permutation_pmts = self.horizontal_flip_mpmt_map[self.vertical_flip_mpmt_map]    
         self.mpmt_positions = np.load(mpmt_positions_file)['mpmt_image_positions']
         self.transforms = du.get_transformations(self, transforms)
         if self.transforms is None:
@@ -120,7 +123,7 @@ class CNNmPMTDataset(H5Dataset):
         rows, row_counts = np.unique(self.mpmt_positions[:, 0], return_counts=True)  # count occurrences of each row
         cols, col_counts = np.unique(self.mpmt_positions[:, 1], return_counts=True)  # count occurrences of each column
         # barrel rows are those where the row appears in mpmt_positions as many times as the image width
-        barrel_rows = rows[row_counts == self.image_width]
+        barrel_rows = rows[row_counts > 10]
         # endcap size is the number of rows before the first barrel row
         self.endcap_size = np.min(barrel_rows)
         self.barrel = np.s_[..., self.endcap_size:np.max(barrel_rows) + 1, :]
@@ -244,7 +247,7 @@ class CNNmPMTDataset(H5Dataset):
 
     def horizontal_reflection(self, data_dict):
         """Takes CNN input data and truth info and performs horizontal flip, permuting mPMT channels where needed."""
-        data_dict["data"][self.data_channels] = self.horizontal_image_flip(data_dict["data"])[self.data_channels]
+        data_dict["data"][self.data_channels] = self.horizontal_image_flip(data_dict["data"])[data_dict["data"]]
         # If the endcaps are offset from the middle of the image, need to roll the image to keep the same offset
         offset = self.endcap_left - (self.image_width - self.endcap_right)
         data_dict["data"][self.data_channels] = np.roll(data_dict["data"][self.data_channels], offset, 2)
