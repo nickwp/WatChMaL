@@ -91,7 +91,7 @@ class CNNmPMTDataset(H5Dataset):
         super().__init__(h5file, use_memmap)
 
         self.use_new_mpmt_convention = use_new_mpmt_convention
-        self.default_transformation = default_transformation = transforms is None or 'rotate_permutation_pmts' in transforms
+        self.default_transformation = default_transformation
         if self.use_new_mpmt_convention:
             self.barrel_mpmt_map = BARREL_MPMT_MAP_NEW
             self.vertical_flip_mpmt_map = VERTICAL_FLIP_MPMT_MAP_NEW
