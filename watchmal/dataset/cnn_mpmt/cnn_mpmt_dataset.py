@@ -247,7 +247,7 @@ class CNNmPMTDataset(H5Dataset):
 
     def horizontal_reflection(self, data_dict):
         """Takes CNN input data and truth info and performs horizontal flip, permuting mPMT channels where needed."""
-        data_dict["data"][self.data_channels] = self.horizontal_image_flip(data_dict["data"])[data_dict["data"]]
+        data_dict["data"][self.data_channels] = self.horizontal_image_flip(data_dict["data"])[self.data_channels]
         # If the endcaps are offset from the middle of the image, need to roll the image to keep the same offset
         offset = self.endcap_left - (self.image_width - self.endcap_right)
         data_dict["data"][self.data_channels] = np.roll(data_dict["data"][self.data_channels], offset, 2)
