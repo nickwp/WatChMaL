@@ -5,14 +5,14 @@ defaults:
 gpu_list:
     - 0
 data:
-  split_path: /rds/general/user/kj4718/home/ML/ml_geometry/2025_cds_geo/split_index_list_e_FC.npz
+  split_path: /vols/hyperk/WCTE/ML_2025/cds_geometry/split_paths/cds_split_path_e_FC.npz
   dataset:
     default_transformation: True
     use_new_mpmt_convention: True
-    h5file: /rds/general/user/bh625/home/h5files/wcte_CDS_pgun_e-_3M_mu-_3M_0to1GeV.h5
+    h5file: /vols/hyperk/WCTE/ML_2025/cds_geometry/h5_files/wcte_CDS_pgun_e-_3M_mu-_3M_0to1GeV.h5
     #mpmt_positions_file: /rds/general/user/bh625/home/mpmt_position_files/WCTE_mPMT_image_positions_with_missing_mpmts_v2.npz
-    mpmt_positions_file: /rds/general/user/kj4718/home/ML/ml_geometry/2025_cds_geo/WCTE_mPMT_image_positions_v3.npz
-    geometry_file: /rds/general/user/bh625/home/geometries/WCTE_geometry_v1.12.21.npz
+    mpmt_positions_file: /vols/hyperk/WCTE/ML_2025/cds_geometry/mpmt_pos_files/WCTE_mPMT_image_positions_v3.npz
+    geometry_file: /vols/hyperk/WCTE/ML_2025/cds_geometry/geometries/WCTE_geometry_v1.12.21.npz
     channels: 
       - charge
       - time
@@ -23,6 +23,7 @@ data:
       mpmt_position: 0
     channel_scale_factor:
       time: 10
+      charge: 1
       mpmt_position: 100
 tasks:
   train:

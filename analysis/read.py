@@ -187,8 +187,8 @@ class WatChMaLOutput(ABC, metaclass=ABCMeta):
             self._training_log = self.read_training_log()
         return self._val_log_best
 
-
 class FiTQunOutput:
+
     """
     Class for reading in results of fiTQun reconstruction. Documentation of the outputs provided is mostly taken
     directly from the fiTQun readme file. See github.com/fiTQun/fiTQun (access to private repository required) for more
@@ -389,6 +389,7 @@ class FiTQunOutput:
     pdk_nll              fqpmgnll       Best-fit negative log-likelihood
     ==========================================================================
     """
+   
     def __init__(self, file_path):
         """
         Create an object holding results of a fiTQun reconstruction run, given path to the output root file.
@@ -398,7 +399,7 @@ class FiTQunOutput:
         file_path: str
             Path the fiTQun output root file
         """
-        self.chain = uproot.lazy(file_path)
+        self.chain = uproot.dask(file_path)
 
         self.n_timewindows = self.chain['fqntwnd']
         self.timewindow = self.chain['fqtwnd']
