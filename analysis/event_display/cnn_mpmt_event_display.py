@@ -105,6 +105,8 @@ class CNNmPMTEventDisplay(CNNmPMTDataset):
         """
         rows = self.mpmt_positions[:, 0]
         columns = self.mpmt_positions[:, 1]
+        if data.ndim == 4 :
+            data = np.squeeze(data, axis=1)
         data_nan = np.full_like(data, np.nan)  # fill an array with nan for positions where there's no actual PMTs
         data_nan[:, rows, columns] = data[:, rows, columns]  # replace the nans with the data where there is a PMT
         if transforms is not None:
@@ -341,14 +343,17 @@ class CNNmPMTEventDisplay(CNNmPMTDataset):
                 old_h_flip_permutation = self.h_flip_permutation
                 old_v_flip_permutation = self.v_flip_permutation
                 old_rotate_permutation = self.rotate_permutation
+                old_data_channels = self.data_channels
                 self.h_flip_permutation = self.horizontal_flip_mpmt_map
                 self.v_flip_permutation = self.vertical_flip_mpmt_map
                 self.rotate_permutation = self.horizontal_flip_mpmt_map[self.vertical_flip_mpmt_map]
-                data = self.process_data(pmt_ids, data_map[p])
+                self.data_channels = ...
+                data = self.process_data(pmt_ids, data_map[p]).squeeze()
                 fig, ax = self.plot_data_2d(data, **args)
                 self.h_flip_permutation = old_h_flip_permutation
                 self.v_flip_permutation = old_v_flip_permutation
                 self.rotate_permutation = old_rotate_permutation
+                self.data_channels = old_data_channels
             figs.append(fig)
             axes.append(ax)
         return figs, axes
