@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+import torch.nn.functional as F
 
 
 def conv1x1(in_planes, out_planes, stride=1):
@@ -18,10 +19,10 @@ class BasicBlock(nn.Module):
     def __init__(self, inplanes, planes, stride=1, downsample=None, conv_pad_mode='zeros', norm=nn.BatchNorm2d):
         super(BasicBlock, self).__init__()
         
-        self.conv1 = conv3x3(inplanes, planes, stride, conv_pad_mode)
+        self.conv1 = conv3x3(inplanes, planes, 1, conv_pad_mode)
         self.bn1 = norm(planes)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes, padding_mode=conv_pad_mode)
+        self.conv2 = conv3x3(planes, planes, stride, conv_pad_mode)
         self.bn2 = norm(planes)
         self.downsample = downsample
         self.stride = stride
@@ -85,7 +86,7 @@ class Bottleneck(nn.Module):
 class ResNet(nn.Module):
 
     def __init__(self, block, layers, num_input_channels, num_output_channels, zero_init_residual=False,
-                 conv_pad_mode='zeros', group_norm=False, n_groups=32):
+                 first_kernel_size=1, first_stride=1, conv_pad_mode='zeros', group_norm=False, n_groups=32):
         if group_norm:
             class GroupNorm(nn.GroupNorm):
                 def __init__(self, num_channels):
@@ -98,7 +99,10 @@ class ResNet(nn.Module):
 
         self.inplanes = 64
 
-        self.conv1 = nn.Conv2d(num_input_channels, 64, kernel_size=1, stride=1, padding=0, bias=False)
+        pad_l = first_kernel_size // 2
+        pad_r = first_kernel_size - 1 - pad_l
+        self.pad1 = lambda x: F.pad(x, (pad_l, pad_r, pad_l, pad_r), mode="constant" if conv_pad_mode == "zeros" else conv_pad_mode)
+        self.conv1 = nn.Conv2d(num_input_channels, 64, kernel_size=first_kernel_size, stride=first_stride, padding=0, bias=False)
         self.bn1 = self.norm(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -145,6 +149,7 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
+        x = self.pad1(x)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
