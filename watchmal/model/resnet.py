@@ -3,6 +3,30 @@ import torch
 import torch.nn.functional as F
 
 
+class ShiftInvariantConv2d(nn.Conv2d):
+    """
+    Conv2d whose output is invariant to a global additive shift on a subset of input channels.
+
+    Constrains weights to sum to zero over spatial dimensions and the specified
+    input channels.
+
+    Parameters
+    ----------
+    constrained_in_channels : list[int]
+        Input channel indices included in the zero-sum constraint.
+    All other parameters are identical to nn.Conv2d.
+    """
+
+    def __init__(self, constrained_in_channels, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.register_buffer("_cidx", torch.tensor(constrained_in_channels, dtype=torch.long))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        w = self.weight.clone()
+        w[:, self._cidx] -= w[:, self._cidx].mean(dim=(1, 2, 3), keepdim=True)
+        return self._conv_forward(x, self._constrained_weight, self.bias)
+
+
 def conv1x1(in_planes, out_planes, stride=1):
     """1x1 convolution"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
@@ -86,7 +110,8 @@ class Bottleneck(nn.Module):
 class ResNet(nn.Module):
 
     def __init__(self, block, layers, num_input_channels, num_output_channels, zero_init_residual=False,
-                 first_kernel_size=1, first_stride=1, conv_pad_mode='zeros', group_norm=False, n_groups=32):
+                 first_kernel_size=1, first_stride=1, shift_inv_channels=None, conv_pad_mode='zeros',
+                 group_norm=False, n_groups=32):
         if group_norm:
             class GroupNorm(nn.GroupNorm):
                 def __init__(self, num_channels):
@@ -102,7 +127,10 @@ class ResNet(nn.Module):
         pad_l = first_kernel_size // 2
         pad_r = first_kernel_size - 1 - pad_l
         self.pad1 = lambda x: F.pad(x, (pad_l, pad_r, pad_l, pad_r), mode="constant" if conv_pad_mode == "zeros" else conv_pad_mode)
-        self.conv1 = nn.Conv2d(num_input_channels, 64, kernel_size=first_kernel_size, stride=first_stride, padding=0, bias=False)
+        if shift_inv_channels is None:
+            self.conv1 = nn.Conv2d(num_input_channels, 64, kernel_size=first_kernel_size, stride=first_stride, padding=0, bias=False)
+        else:
+            self.conv1 = ShiftInvariantConv2d(shift_inv_channels, num_input_channels, 64, kernel_size=first_kernel_size, stride=first_stride, padding=0, bias=False)
         self.bn1 = self.norm(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
