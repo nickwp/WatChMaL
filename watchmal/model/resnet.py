@@ -24,7 +24,7 @@ class ShiftInvariantConv2d(nn.Conv2d):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         w = self.weight.clone()
         w[:, self._cidx] -= w[:, self._cidx].mean(dim=(1, 2, 3), keepdim=True)
-        return self._conv_forward(x, self._constrained_weight, self.bias)
+        return self._conv_forward(x, w, self.bias)
 
 
 def conv1x1(in_planes, out_planes, stride=1):
