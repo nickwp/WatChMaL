@@ -130,6 +130,17 @@ class ResNet(nn.Module):
         if shift_inv_channels is None:
             self.conv1 = nn.Conv2d(num_input_channels, 64, kernel_size=first_kernel_size, stride=first_stride, padding=0, bias=False)
         else:
+            if conv_pad_mode == "zeros":
+                pad1 = self.pad1
+                def replace_inv_channel_pad(x):
+                    values = x[:, shift_inv_channels, 0:1, 0:1]
+                    x = pad1(x)
+                    x[:, shift_inv_channels, :pad_l, :] = values
+                    x[:, shift_inv_channels, -pad_r:, :] = values
+                    x[:, shift_inv_channels, :, :pad_l] = values
+                    x[:, shift_inv_channels, :, -pad_r:] = values
+                    return x
+                self.pad1 = replace_inv_channel_pad
             self.conv1 = ShiftInvariantConv2d(shift_inv_channels, num_input_channels, 64, kernel_size=first_kernel_size, stride=first_stride, padding=0, bias=False)
         self.bn1 = self.norm(64)
         self.relu = nn.ReLU(inplace=True)
