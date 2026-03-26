@@ -5,15 +5,18 @@ import torch.nn.functional as F
 
 class ShiftInvariantConv2d(nn.Conv2d):
     """
-    Conv2d whose output is invariant to a global additive shift on a subset of input channels.
+    Conv2d whose output is invariant to an arbitrary constant added to a subset of input channels.
+    The constant can vary per example (event), but not per channel, and has no effect on the output of the convolution.
+    This means that the convolution only depends on relative differences between values within the receptive field for
+    those channels, and the output is independent of their absolute scale.
 
-    Constrains weights to sum to zero over spatial dimensions and the specified
-    input channels.
+    This is achieved by constraining the weights to sum to zero over spatial dimensions and the specified input channels
+    by subtracting the mean of the respective weights that multiply any input value of the specified channels.
 
     Parameters
     ----------
     constrained_in_channels : list[int]
-        Input channel indices included in the zero-sum constraint.
+        Input channel indices to be constrained to be shift invariant.
     All other parameters are identical to nn.Conv2d.
     """
 
