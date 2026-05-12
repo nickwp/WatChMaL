@@ -19,6 +19,9 @@ from torch.nn.parallel import DistributedDataParallel
 from watchmal.dataset.data_utils import get_data_loader
 from watchmal.utils.logging_utils import CSVLog
 
+# AMP imports
+from torch.amp import GradScaler, autocast
+
 log = logging.getLogger(__name__)
 
 
@@ -52,6 +55,10 @@ class ReconstructionEngine(ABC):
         self.target_key = target_key
         self.criterion = loss
 
+        # Automatic Mixed Precision
+        self.use_amp = False
+        self.scaler = GradScaler("cuda") if self.device.type == "cuda" else None
+
         # Set up the parameters to save given the model type
         if isinstance(self.model, DistributedDataParallel):
             self.is_distributed = True
@@ -83,12 +90,18 @@ class ReconstructionEngine(ABC):
         if self.rank == 0:
             total_params = sum(p.numel() for p in self.module.parameters() if p.requires_grad)
             opt_params = sum(p.numel() for g in self.optimizer.param_groups for p in g['params'])
-            print(f"Total trainable parameters: {total_params}")
-            print(f"Parameters passed to optimizer: {opt_params}")
+            log.info(f"Total trainable parameters: {total_params}")
+            log.info(f"Parameters passed to optimizer: {opt_params}")
 
     def configure_scheduler(self, scheduler):
         """Instantiate a scheduler from a hydra config."""
         self.scheduler = scheduler(optimizer=self.optimizer)
+
+    def configure_amp(self, amp_enabled: bool = False):
+        """Configure automatic mixed precision (AMP)."""
+        self.use_amp = bool(amp_enabled) and (self.device.type == "cuda")
+        if self.rank == 0:
+            log.info(f"AMP enabled: {self.use_amp}")
 
     def configure_data_loaders(self, data_config, loaders_config, is_distributed, seed):
         is_gpu = self.device != torch.device("cpu")
@@ -259,11 +272,21 @@ class ReconstructionEngine(ABC):
                 self.process_data(train_data)
                 self.process_target(train_data)
                 # Call forward: make a prediction & measure the average error
-                outputs, metrics = self.step(True,True)
-                # Convert torch tensors containing each metric into scalar
-                metrics = {k: v.item() for k, v in metrics.items()}
-                # Call backward: back-propagate error and update weights using loss = self.loss
-                self.backward()
+                if self.use_amp and (self.scaler is not None):
+                    with autocast(device_type=self.device.type):
+                        outputs, metrics = self.step(True, True)
+                        metrics = {k: v.item() for k, v in metrics.items()}
+                        # Call backward with AMP
+                        self.optimizer.zero_grad()
+                        self.scaler.scale(self.loss).backward()
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                else:
+                    # standard forward and backward pass
+                    outputs, metrics = self.step(True, True)
+                    metrics = {k: v.item() for k, v in metrics.items()}
+                    # Call backward: back-propagate error and update weights using loss = self.loss
+                    self.backward()
                 # run scheduler
                 if self.scheduler is not None:
                     self.scheduler.step()
