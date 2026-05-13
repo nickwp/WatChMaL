@@ -54,7 +54,7 @@ class ReconstructionEngine(ABC):
 
         # Automatic Mixed Precision
         self.use_amp = False
-        self.scaler = GradScaler("cuda") if self.device.type == "cuda" else None
+        self.scaler = None
 
         # Set up the parameters to save given the model type
         if isinstance(self.model, DistributedDataParallel):
@@ -97,11 +97,15 @@ class ReconstructionEngine(ABC):
         """Instantiate a scheduler from a hydra config."""
         
         self.scheduler = instantiate(scheduler_config, optimizer=self.optimizer)
+
     def configure_amp(self, amp_enabled: bool = False):
         """Configure automatic mixed precision (AMP)."""
         self.use_amp = bool(amp_enabled) and (self.device.type == "cuda")
+        if self.use_amp:
+            self.scaler = GradScaler("cuda")
         if self.rank == 0:
             log.info(f"AMP enabled: {self.use_amp}")
+
     def configure_data_loaders(self, data_config, loaders_config, is_distributed, seed):
         is_gpu = self.device != torch.device("cpu")
         for name, loader_config in loaders_config.items():
@@ -201,11 +205,12 @@ class ReconstructionEngine(ABC):
             Dictionary containing loss and other metrics
         """
         with torch.set_grad_enabled(train):
-            outputs = self.forward_pass()
-            if not with_metrics:
-                return outputs
-            metrics = self.compute_metrics()
-            return outputs, metrics
+            with autocast(device_type=self.device.type, enabled=self.use_amp):
+                outputs = self.forward_pass()
+                if not with_metrics:
+                    return outputs
+                metrics = self.compute_metrics()
+                return outputs, metrics
 
     def backward(self):
         """Backward pass using the loss computed for a mini-batch"""
@@ -263,23 +268,22 @@ class ReconstructionEngine(ABC):
                 self.process_data(train_data)
                 self.process_target(train_data)
                 # Call forward: make a prediction & measure the average error
+                outputs, metrics = self.step(True, True)
+                metrics = {k: v.item() for k, v in metrics.items()}
                 if self.use_amp and (self.scaler is not None):
-                    with autocast(device_type=self.device.type):
-                        outputs, metrics = self.step(True, True)
-                        metrics = {k: v.item() for k, v in metrics.items()}
-                        # Call backward with AMP
-                        self.optimizer.zero_grad()
-                        self.scaler.scale(self.loss).backward()
-                        self.scaler.step(self.optimizer)
-                        self.scaler.update()
+                    self.optimizer.zero_grad()
+                    previous_scale = self.scaler.get_scale()
+                    self.scaler.scale(self.loss).backward()
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    optimizer_was_updated = self.scaler.get_scale() >= previous_scale
                 else:
                     # standard forward and backward pass
-                    outputs, metrics = self.step(True, True)
-                    metrics = {k: v.item() for k, v in metrics.items()}
                     # Call backward: back-propagate error and update weights using loss = self.loss
                     self.backward()
+                    optimizer_was_updated = True
                 # run scheduler
-                if self.scheduler is not None:
+                if self.scheduler is not None and optimizer_was_updated:
                     self.scheduler.step()
                 # update the epoch and iteration
                 step += 1
@@ -460,6 +464,8 @@ class ReconstructionEngine(ABC):
         self.state_data['global_step'] = self.iteration
         self.state_data['optimizer'] = self.optimizer.state_dict()
         self.state_data['state_dict'] = model_dict
+        if self.scaler is not None:
+            self.state_data['scaler'] = self.scaler.state_dict()
         torch.save(self.state_data, filename)
         log.info(f"Saved state as: {filename}")
         return filename
@@ -485,5 +491,7 @@ class ReconstructionEngine(ABC):
             # if optim is provided, load the state of the optim
             if self.optimizer is not None:
                 self.optimizer.load_state_dict(self.state_data['optimizer'])
+                if self.scaler is not None:
+                    self.scaler.load_state_dict(self.state_data['scaler'])
             # load iteration count
             self.iteration = self.state_data['global_step']
