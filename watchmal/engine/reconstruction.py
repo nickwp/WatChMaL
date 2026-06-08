@@ -214,7 +214,7 @@ class ReconstructionEngine(ABC):
 
     def backward(self):
         """Backward pass using the loss computed for a mini-batch"""
-        self.optimizer.zero_grad()  # reset accumulated gradient
+        self.optimizer.zero_grad(set_to_none=True)  # free gradient tensors rather than zeroing
         self.loss.backward()  # compute new gradient
         self.optimizer.step()  # step params
 
@@ -271,7 +271,7 @@ class ReconstructionEngine(ABC):
                 outputs, metrics = self.step(True, True)
                 metrics = {k: v.item() for k, v in metrics.items()}
                 if self.use_amp and (self.scaler is not None):
-                    self.optimizer.zero_grad()
+                    self.optimizer.zero_grad(set_to_none=True)
                     previous_scale = self.scaler.get_scale()
                     self.scaler.scale(self.loss).backward()
                     self.scaler.step(self.optimizer)
