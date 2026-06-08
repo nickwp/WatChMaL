@@ -95,7 +95,7 @@ class ReconstructionEngine(ABC):
 
     def configure_scheduler(self, scheduler_config):
         """Instantiate a scheduler from a hydra config."""
-        
+
         self.scheduler = instantiate(scheduler_config, optimizer=self.optimizer)
 
     def configure_amp(self, amp_enabled: bool = False):
@@ -167,9 +167,9 @@ class ReconstructionEngine(ABC):
     def process_data(self, data):
         """Extract the event data from the input data dict"""
         if isinstance(data['data'], (list, tuple)):
-            self.data = type(data['data'])(d.to(self.device) for d in data['data'])
-        else: 
-            self.data = data['data'].to(self.device)
+            self.data = type(data['data'])(d.to(self.device, non_blocking=True) for d in data['data'])
+        else:
+            self.data = data['data'].to(self.device, non_blocking=True)
 
     @abstractmethod
     def process_target(self, data):
