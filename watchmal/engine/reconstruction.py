@@ -7,6 +7,7 @@ import numpy as np
 from datetime import datetime
 from abc import ABC, abstractmethod
 import logging
+from collections import defaultdict
 
 # hydra imports
 from hydra.utils import instantiate
@@ -18,9 +19,6 @@ from torch.nn.parallel import DistributedDataParallel
 # WatChMaL imports
 from watchmal.dataset.data_utils import get_data_loader
 from watchmal.utils.logging_utils import CSVLog
-
-# AMP imports
-from torch.amp import GradScaler, autocast
 
 log = logging.getLogger(__name__)
 
@@ -102,7 +100,7 @@ class ReconstructionEngine(ABC):
         """Configure automatic mixed precision (AMP)."""
         self.use_amp = bool(amp_enabled) and (self.device.type == "cuda")
         if self.use_amp:
-            self.scaler = GradScaler("cuda")
+            self.scaler = torch.amp.GradScaler("cuda")
         if self.rank == 0:
             log.info(f"AMP enabled: {self.use_amp}")
 
@@ -199,13 +197,13 @@ class ReconstructionEngine(ABC):
 
         Returns
         =======
-        outputs : dict
+        outputs : dict[Tensor]
             Dictionary containing target and outputs
-        metrics : dict
+        metrics : dict[Tensor]
             Dictionary containing loss and other metrics
         """
         with torch.set_grad_enabled(train):
-            with autocast(device_type=self.device.type, enabled=self.use_amp):
+            with torch.amp.autocast(device_type=self.device.type, enabled=self.use_amp):
                 outputs = self.forward_pass()
                 if not with_metrics:
                     return outputs
@@ -383,6 +381,11 @@ class ReconstructionEngine(ABC):
             start_time = datetime.now()
             step_time = start_time
             steps_per_epoch = len(self.data_loaders["test"])
+
+            all_outputs = defaultdict(list)
+            accumulated_metrics = defaultdict(int)
+            total_samples = 0
+
             for step, data in enumerate(self.data_loaders["test"]):
                 self.process_data(data)
                 if with_metrics:
@@ -392,18 +395,19 @@ class ReconstructionEngine(ABC):
                     outputs = self.step(False, False)
                     metrics = {}
 
-                outputs['indices'] = data['indices'].to(self.device)
+                outputs['indices'] = data['indices'].to(self.device, non_blocking=True)
 
                 # Add the local result to the final result
                 batch_size = len(outputs["indices"])
-                if step == 0:
-                    all_outputs = outputs
-                    accumulated_metrics = {k: m * batch_size for k, m in metrics.items()}
-                else:
-                    for k in all_outputs.keys():
-                        all_outputs[k] = torch.cat((all_outputs[k], outputs[k]))
-                    for k in accumulated_metrics.keys():
-                        accumulated_metrics[k] += metrics[k] * batch_size
+                total_samples += batch_size
+                for k in metrics:
+                    accumulated_metrics[k] += metrics[k] * batch_size
+
+                # Gather this batch to CPU on rank 0 — GPU never accumulates the full dataset
+                batch_outputs = self.get_synchronized_outputs(outputs)
+                if self.rank == 0:
+                    for k in batch_outputs:
+                        all_outputs[k].append(batch_outputs[k])
 
                 if self.rank == 0 and step % report_interval == 0:
                     previous_step_time = step_time
@@ -415,17 +419,14 @@ class ReconstructionEngine(ABC):
                     print_str += f" Step time {average_step_time}, Total time {step_time-start_time}"
                     print(print_str)
 
-        for k in accumulated_metrics.keys():
-            accumulated_metrics[k] /= len(all_outputs["indices"])
-        # Gather results from all processes
+        for k in accumulated_metrics:
+            accumulated_metrics[k] /= total_samples
         accumulated_metrics = self.get_synchronized_metrics(accumulated_metrics)
-        all_outputs = self.get_synchronized_outputs(all_outputs)
+
         if self.rank == 0:
-            # Save overall evaluation results
             log.info("Saving Data...")
             for k, v in all_outputs.items():
-                np.save(self.dump_path + k + ".npy", v)
-            # Compute overall evaluation metrics
+                np.save(self.dump_path + k + ".npy", np.concatenate(v))
             for k, v in accumulated_metrics.items():
                 log.info(f"Average evaluation {k}: {v}")
 
