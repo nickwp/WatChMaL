@@ -90,9 +90,10 @@ class RegressionEngine(ReconstructionEngine):
 
     def compute_metrics(self):
         self.loss = self.criterion(self.model_out, self.stacked_target)
-        # return loss and metrics for the predictions
-        metrics = {k: m for t, v in self.target_dict.items() if t in metric_functions
-                   for k, m in metric_functions[t](self.predictions["predicted_"+t], v).items()}
+        # return loss and metrics for the predictions without tracking gradients for logging-only metrics
+        with torch.no_grad():
+            metrics = {k: m for t, v in self.target_dict.items() if t in metric_functions
+                       for k, m in metric_functions[t](self.predictions["predicted_"+t].detach(), v).items()}
         metrics['loss'] = self.loss
         return metrics
 
