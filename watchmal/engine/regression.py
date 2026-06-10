@@ -78,7 +78,7 @@ class RegressionEngine(ReconstructionEngine):
         if self.scale_per_pe is not None:
             self.total_charge = data["total_charge"].to(self.device)
             for t in self.scale_per_pe:
-                scaled_targets[t] /= self.total_charge if self.target_dict[t].dim() == 1 else self.total_charge[-1, None]
+                scaled_targets[t] /= self.total_charge if self.target_dict[t].dim() == 1 else self.total_charge[:, None]
         # stack the targets for calculating the loss
         self.stacked_target = torch.column_stack(list(scaled_targets.values()))
 
@@ -93,7 +93,7 @@ class RegressionEngine(ReconstructionEngine):
         if self.scale_per_pe is not None:
             for t in self.scale_per_pe:
                 prediction = self.predictions["predicted_" + t]
-                prediction *= self.total_charge if prediction.dim() == 1 else self.total_charge[-1, None]
+                prediction *= self.total_charge if prediction.dim() == 1 else self.total_charge[:, None]
         if self.target_dict is None:
             return self.predictions
         return self.target_dict | self.predictions
