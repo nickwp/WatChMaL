@@ -75,9 +75,12 @@ class RegressionEngine(ReconstructionEngine):
         if self.target_sizes is None:
             self.target_sizes = [v.shape[-1] if len(v.shape) > 1 else 1 for v in self.target_dict.values()]
         if self.scale_per_pe is not None:
-            self.total_charge = data["total_charge"]
+            # Convert to tensor and move to device
+            total_charge = data["total_charge"].to(self.device)
+            self.total_charge = total_charge  # Keep as (batch_size,) for per-target reshaping
             for t in self.scale_per_pe:
-                self.target_dict[t] /= data["total_charge"]
+                # Reshape total_charge to broadcast with this target's shape
+                self.target_dict[t] /= self.total_charge if self.target_dict[t].dim() == 1 else self.total_charge[-1, None]
         # scale and stack the targets for calculating the loss
         self.stacked_target = torch.column_stack([(v - self.offset[t]) / self.scale[t] for t, v in self.target_dict.items()])
 
@@ -91,7 +94,8 @@ class RegressionEngine(ReconstructionEngine):
                             for t, o in zip(self.target_key, split_model_out)}
         if self.scale_per_pe is not None:
             for t in self.scale_per_pe:
-                self.predictions["predicted_" + t] *= self.total_charge
+                prediction = self.predictions["predicted_" + t]
+                prediction *= self.total_charge if prediction.dim() == 1 else self.total_charge[-1, None]
         if self.target_dict is None:
             return self.predictions
         return self.target_dict | self.predictions
