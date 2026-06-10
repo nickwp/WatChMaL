@@ -74,15 +74,13 @@ class RegressionEngine(ReconstructionEngine):
         # First time we get data, determine the target sizes
         if self.target_sizes is None:
             self.target_sizes = [v.shape[-1] if len(v.shape) > 1 else 1 for v in self.target_dict.values()]
+        scaled_targets = {t: (v - self.offset[t]) / self.scale[t] for t, v in self.target_dict.items()}
         if self.scale_per_pe is not None:
-            # Convert to tensor and move to device
-            total_charge = data["total_charge"].to(self.device)
-            self.total_charge = total_charge  # Keep as (batch_size,) for per-target reshaping
+            self.total_charge = data["total_charge"].to(self.device)
             for t in self.scale_per_pe:
-                # Reshape total_charge to broadcast with this target's shape
-                self.target_dict[t] /= self.total_charge if self.target_dict[t].dim() == 1 else self.total_charge[-1, None]
-        # scale and stack the targets for calculating the loss
-        self.stacked_target = torch.column_stack([(v - self.offset[t]) / self.scale[t] for t, v in self.target_dict.items()])
+                scaled_targets[t] /= self.total_charge if self.target_dict[t].dim() == 1 else self.total_charge[-1, None]
+        # stack the targets for calculating the loss
+        self.stacked_target = torch.column_stack(list(self.target_dict.values()))
 
     def forward_pass(self):
         """Compute predictions for a batch of data"""
