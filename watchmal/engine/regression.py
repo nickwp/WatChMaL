@@ -76,7 +76,7 @@ class RegressionEngine(ReconstructionEngine):
             self.target_sizes = [v.shape[-1] if len(v.shape) > 1 else 1 for v in self.target_dict.values()]
         scaled_targets = {t: (v - self.offset[t]) / self.scale[t] for t, v in self.target_dict.items()}
         if self.scale_per_pe is not None:
-            self.total_charge = data["total_charge"].to(self.device)
+            self.total_charge = data["total_charge"].to(self.device).clamp(min=1.0)
             for t in self.scale_per_pe:
                 scaled_targets[t] /= self.total_charge if self.target_dict[t].dim() == 1 else self.total_charge[:, None]
         # stack the targets for calculating the loss
