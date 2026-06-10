@@ -31,7 +31,7 @@ metric_functions = {
 
 class RegressionEngine(ReconstructionEngine):
     """Engine for performing training or evaluation for a regression network."""
-    def __init__(self, target_key, model, rank, device, dump_path, target_scale_offset=0, target_scale_factor=1):
+    def __init__(self, target_key, model, rank, device, dump_path, target_scale_offset=0, target_scale_factor=1, scale_per_pe=None):
         """
         Parameters
         ==========
@@ -66,6 +66,7 @@ class RegressionEngine(ReconstructionEngine):
         self.target_dict = None
         self.stacked_target = None
         self.predictions = None
+        self.scale_per_pe = scale_per_pe
 
     def process_target(self, data):
         """Extract the event data and target from the input data dict"""
@@ -73,6 +74,10 @@ class RegressionEngine(ReconstructionEngine):
         # First time we get data, determine the target sizes
         if self.target_sizes is None:
             self.target_sizes = [v.shape[-1] if len(v.shape) > 1 else 1 for v in self.target_dict.values()]
+        if self.scale_per_pe is not None:
+            self.total_charge = data["total_charge"]
+            for t in self.scale_per_pe:
+                self.target_dict[t] /= data["total_charge"]
         # scale and stack the targets for calculating the loss
         self.stacked_target = torch.column_stack([(v - self.offset[t]) / self.scale[t] for t, v in self.target_dict.items()])
 
@@ -84,6 +89,9 @@ class RegressionEngine(ReconstructionEngine):
         split_model_out = torch.split(self.model_out, self.target_sizes, dim=1)
         self.predictions = {"predicted_" + t: o * self.scale[t] + self.offset[t]
                             for t, o in zip(self.target_key, split_model_out)}
+        if self.scale_per_pe is not None:
+            for t in self.scale_per_pe:
+                self.predictions["predicted_" + t] *= self.total_charge
         if self.target_dict is None:
             return self.predictions
         return self.target_dict | self.predictions

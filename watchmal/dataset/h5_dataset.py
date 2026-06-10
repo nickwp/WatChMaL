@@ -177,6 +177,8 @@ class H5Dataset(H5CommonDataset, ABC):
             self.event_hit_pmts = self.event_hit_pmts[mask]
             self.event_hit_charges = self.event_hit_charges[mask]
             self.event_hit_times = self.event_hit_times[mask]
+        data_dict["n_hits"] = len(self.event_hit_charges)
+        data_dict["total_charge"] = np.sum(self.event_hit_charges)
 
         return data_dict
 
