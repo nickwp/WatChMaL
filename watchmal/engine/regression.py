@@ -80,7 +80,7 @@ class RegressionEngine(ReconstructionEngine):
             for t in self.scale_per_pe:
                 scaled_targets[t] /= self.total_charge if self.target_dict[t].dim() == 1 else self.total_charge[-1, None]
         # stack the targets for calculating the loss
-        self.stacked_target = torch.column_stack(list(self.target_dict.values()))
+        self.stacked_target = torch.column_stack(list(scaled_targets.values()))
 
     def forward_pass(self):
         """Compute predictions for a batch of data"""
